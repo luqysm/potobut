@@ -23,8 +23,26 @@ class StripRenderer {
       snapon:     { id: 'snapon',    name: 'Snap On!',       desc: 'Biru kobalt, frame retro, stiker matahari' },
       sukhakala:  { id: 'sukhakala', name: 'Sukhakala',      desc: 'Tiket krem, border tebal warna-warni, nomor badge' },
       market:     { id: 'market',    name: 'Market Strip',   desc: 'Putih, border cerah per frame, stiker lucu' },
-      polaroid:   { id: 'polaroid',  name: 'Polaroid Bersih',desc: 'Klasik putih minimalis' }
+      polaroid:   { id: 'polaroid',  name: 'Polaroid Bersih',desc: 'Klasik putih minimalis' },
+      custom:     { id: 'custom',    name: 'Frame saya',     desc: 'Frame dari aset sendiri, 3 jendela foto' }
     };
+
+    /* The "Frame saya" artwork. `windows` are the white photo openings measured
+       from the PNG itself, in native pixels, so the asset can be swapped for a
+       new export without touching anything else. */
+    this.customArt = {
+      file: 'assets/tes-strips.png',
+      w: 142,
+      h: 425,
+      scale: 5,
+      windows: [
+        { x: 8,  y: 86,  w: 128, h: 95 },
+        { x: 8,  y: 189, w: 128, h: 88 },
+        { x: 20, y: 282, w: 116, h: 91 }
+      ]
+    };
+
+    this._customFrameCache = null;
   }
 
   /**
@@ -37,9 +55,11 @@ class StripRenderer {
    * @returns {Promise<HTMLCanvasElement>}
    */
   async render({ photos = [], frameCount = 4, themeId = 'sukhakala', userName = 'Ruang Jepret', filter = 'none' }) {
-    const W = 1200;
+    const custom = themeId === 'custom';
+    const W = custom ? this.customArt.w * this.customArt.scale : 1200;
     // 4:11 ratio for a classic photobooth strip
-    const H = frameCount === 3 ? 3000 : 3800;
+    const H = custom ? this.customArt.h * this.customArt.scale
+                     : (frameCount === 3 ? 3000 : 3800);
 
     const canvas = document.createElement('canvas');
     canvas.width  = W;
@@ -48,7 +68,8 @@ class StripRenderer {
 
     const imgs = await Promise.all(photos.map(s => this._loadImg(s)));
 
-    if      (themeId === 'snapon')    await this._renderSnapOn(ctx, W, H, imgs, frameCount, filter, userName);
+    if (themeId === 'custom') await this._renderCustom(ctx, W, H, imgs, frameCount, filter, userName);
+    else if (themeId === 'snapon')    await this._renderSnapOn(ctx, W, H, imgs, frameCount, filter, userName);
     else if (themeId === 'sukhakala') await this._renderSukhakala(ctx, W, H, imgs, frameCount, filter, userName);
     else if (themeId === 'market')    await this._renderMarket(ctx, W, H, imgs, frameCount, filter, userName);
     else                               await this._renderPolaroid(ctx, W, H, imgs, frameCount, filter, userName);
@@ -662,6 +683,109 @@ class StripRenderer {
     ctx.textBaseline = 'top';
     ctx.fillStyle = 'rgba(43,18,96,0.45)';
     ctx.fillText(`#ruangjepret — ${this._todayStr()}`, W/2, footerY);
+  }
+
+  /* =========================================================================
+     Frame saya — the user's own artwork from assets/tes-strips.png.
+
+     The PNG is embedded as a data URL (js/frame-asset.js). A plain
+     <img src="assets/tes-strips.png"> taints the canvas when index.html is
+     opened from disk, which makes toDataURL() throw and the preview/download
+     come out empty — that is why the asset "could not be used" before.
+
+     The artwork is drawn on top with its white photo windows made
+     transparent, so the photos underneath show through while every doodle,
+     squiggle and letter of the original design stays exactly where it was.
+     ========================================================================= */
+  async _renderCustom(ctx, W, H, imgs, count, filter, brand) {
+    const art = this.customArt;
+
+    ctx.fillStyle = '#fae31f';
+    ctx.fillRect(0, 0, W, H);
+
+    // 1. Photos, clipped into the artwork's photo windows.
+    const slots = art.windows.slice(0, Math.min(count, art.windows.length));
+    slots.forEach((win, i) => {
+      const x = (win.x / art.w) * W;
+      const y = (win.y / art.h) * H;
+      const w = (win.w / art.w) * W;
+      const h = (win.h / art.h) * H;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.roundRect(x, y, w, h, 10 * art.scale);
+      ctx.clip();
+
+      if (imgs[i]) {
+        this._applyFilter(ctx, filter);
+        this._imgCover(ctx, imgs[i], x, y, w, h);
+      } else {
+        ctx.fillStyle = '#fffdf5';
+        ctx.fillRect(x, y, w, h);
+      }
+      ctx.restore();
+    });
+
+    // 2. The artwork on top, windows punched out.
+    const frame = await this._customFrame();
+    if (frame) {
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(frame, 0, 0, W, H);
+    }
+
+    // 3. Name, sitting on the empty paper below the last window.
+    const label = (brand || '').trim();
+    if (label) {
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#2411b9';
+      let size = Math.round(H * 0.026);
+      ctx.font = `800 ${size}px "Baloo 2", "Trebuchet MS", sans-serif`;
+      while (size > 12 && ctx.measureText(label).width > W * 0.8) {
+        size -= 2;
+        ctx.font = `800 ${size}px "Baloo 2", "Trebuchet MS", sans-serif`;
+      }
+      ctx.fillText(label, W / 2, H * 0.925);
+    }
+  }
+
+  /** Artwork with the white photo windows made transparent, built once. */
+  async _customFrame() {
+    if (this._customFrameCache) return this._customFrameCache;
+
+    const b64 = window.FRAME_ASSET_B64;
+    const src = b64 ? `data:image/png;base64,${b64}` : this.customArt.file;
+    const art = await this._loadImg(src);
+    if (!art) return null;
+
+    const cv = document.createElement('canvas');
+    cv.width = this.customArt.w;
+    cv.height = this.customArt.h;
+    const cx = cv.getContext('2d');
+    cx.drawImage(art, 0, 0);
+
+    const data = cx.getImageData(0, 0, cv.width, cv.height);
+    const px = data.data;
+
+    // Only inside the photo windows: white becomes transparent, edges fade.
+    this.customArt.windows.forEach(win => {
+      for (let y = win.y; y < win.y + win.h; y++) {
+        for (let x = win.x; x < win.x + win.w; x++) {
+          const i = (y * cv.width + x) * 4;
+          const m = Math.min(px[i], px[i + 1], px[i + 2]);
+          if (m >= 244) {
+            px[i + 3] = 0;
+          } else if (m > 200) {
+            px[i + 3] = Math.round(((244 - m) / 44) * 255);
+          }
+        }
+      }
+    });
+
+    cx.putImageData(data, 0, 0);
+    this._customFrameCache = cv;
+    return cv;
   }
 
   /* =========================================================================

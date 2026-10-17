@@ -85,6 +85,7 @@
     // Strip Preview & Customizer
     stripReadyBadge: document.getElementById('stripReadyBadge'),
     themeChips: document.querySelectorAll('.btn-theme-chip'),
+    themeNote: document.getElementById('themeNote'),
     nameTagInput: document.getElementById('nameTagInput'),
     stripPreviewImg: document.getElementById('stripPreviewImg'),
     btnDownloadStrip: document.getElementById('btnDownloadStrip'),
@@ -226,7 +227,7 @@
 
       // Update Jep Mascot
       JepMascot.updateMascotEl(DOM.mascotReactiveWidget, 'ready', 'Kamera aktif! Tahan pose terbaikmu, lalu klik jepret.');
-      showToast('Kamera berhasil dinyalakan!');
+      showToast('Kamera aktif.');
       return true;
 
     } catch (err) {
@@ -318,19 +319,19 @@
   function updateCameraStatus(isActive) {
     if (isActive) {
       DOM.globalStatusDot.classList.add('active');
-      DOM.globalStatusText.textContent = 'Kamera Aktif';
+      DOM.globalStatusText.textContent = 'Kamera aktif';
       DOM.hudStatusDot.classList.add('active');
-      DOM.hudStatusText.textContent = 'LIVE';
-      DOM.shutterBtnLabel.textContent = 'Jepret Foto';
+      DOM.hudStatusText.textContent = 'live';
+      DOM.shutterBtnLabel.textContent = 'Jepret foto';
       updateShutterHint();
     } else {
       DOM.globalStatusDot.classList.remove('active');
-      DOM.globalStatusText.textContent = 'Kamera Nonaktif';
+      DOM.globalStatusText.textContent = 'Kamera nonaktif';
       DOM.hudStatusDot.classList.remove('active');
-      DOM.hudStatusText.textContent = 'STANDBY';
+      DOM.hudStatusText.textContent = 'siap';
       DOM.btnShutter.disabled = true;
-      DOM.shutterHintTitle.textContent = 'Kamera Belum Dinyalakan';
-      DOM.shutterHintSub.textContent = 'Klik tombol Nyalakan Kamera untuk memulai sesi foto.';
+      DOM.shutterHintTitle.textContent = 'Kamera belum dinyalakan';
+      DOM.shutterHintSub.textContent = 'Nyalakan kamera untuk mulai memotret.';
     }
   }
 
@@ -347,7 +348,7 @@
     // Check if slots are completely filled
     const filledCount = state.slots.filter(Boolean).length;
     if (filledCount >= state.stripFormat && state.activeSlotIndex >= state.stripFormat) {
-      showToast('Semua slot strip sudah penuh! Anda bisa mengulangi slot foto mana pun.');
+      showToast('Semua slot sudah terisi. Slot pertama dipilih untuk diulang.');
       // Auto-target the first slot for replacement if user clicks again
       state.activeSlotIndex = 0;
       renderSlotsGrid();
@@ -429,9 +430,9 @@
     JepMascot.updateMascotEl(
       DOM.mascotReactiveWidget,
       'success',
-      `Jepret berhasil di Slot ${targetSlot + 1}! Cakep banget!`
+      `Jepret! Foto masuk ke slot ${targetSlot + 1}.`
     );
-    showToast(`Foto disimpan ke Slot ${targetSlot + 1}`);
+    showToast(`Foto tersimpan di slot ${targetSlot + 1}`);
   }
 
   function getFirstEmptySlot() {
@@ -444,12 +445,12 @@
     const total = state.stripFormat;
 
     if (filledCount === total) {
-      DOM.shutterHintTitle.textContent = `Strip ${total} Foto Lengkap!`;
-      DOM.shutterHintSub.textContent = 'Siap diunduh. Anda bisa mengulang slot foto jika diinginkan.';
+      DOM.shutterHintTitle.textContent = `Strip ${total} foto sudah lengkap`;
+      DOM.shutterHintSub.textContent = 'Siap diunduh. Kamu masih bisa mengulang slot mana pun.';
     } else {
       const nextSlot = (state.activeSlotIndex < total) ? state.activeSlotIndex + 1 : getFirstEmptySlot() + 1;
-      DOM.shutterHintTitle.textContent = `Mengambil Foto untuk Slot ${nextSlot} dari ${total}`;
-      DOM.shutterHintSub.textContent = `Tersisa ${total - filledCount} slot foto kosong.`;
+      DOM.shutterHintTitle.textContent = `Memotret untuk slot ${nextSlot} dari ${total}`;
+      DOM.shutterHintSub.textContent = `Sisa ${total - filledCount} slot masih kosong.`;
     }
   }
 
@@ -468,7 +469,7 @@
   /* --------------------------------------------------------------------------
      Slots Planner UI (3 Foto vs 4 Foto)
      -------------------------------------------------------------------------- */
-  function setStripFormat(format) {
+  function setStripFormat(format, silent = false) {
     if (format !== 3 && format !== 4) return;
     state.stripFormat = format;
 
@@ -493,12 +494,22 @@
     updateShutterHint();
     updateStripPreview();
 
-    showToast(`Format diubah ke ${format} Foto`);
+    if (!silent) showToast(`Strip diset ke ${format} foto`);
+  }
+
+  /**
+   * The "Frame saya" artwork only has 3 photo windows, so the 4-photo option
+   * is locked while it is selected. Every other frame supports both sizes.
+   */
+  function applyThemeConstraints() {
+    const isCustom = state.currentTheme === 'custom';
+    DOM.btnFormat4.disabled = isCustom;
+    if (DOM.themeNote) DOM.themeNote.hidden = !isCustom;
+    if (isCustom && state.stripFormat !== 3) setStripFormat(3, true);
   }
 
   function renderSlotsGrid() {
     DOM.slotsGridContainer.innerHTML = '';
-    DOM.slotsGridContainer.style.gridTemplateColumns = `repeat(${state.stripFormat}, 1fr)`;
 
     for (let i = 0; i < state.stripFormat; i++) {
       const photo = state.slots[i];
@@ -506,7 +517,7 @@
       slotEl.className = 'slot-item' + (photo ? ' filled' : '') + (state.activeSlotIndex === i ? ' active-target' : '');
       slotEl.setAttribute('role', 'button');
       slotEl.setAttribute('tabindex', '0');
-      slotEl.setAttribute('aria-label', `Slot Foto ${i + 1} (${photo ? 'Terisi' : 'Kosong'})`);
+      slotEl.setAttribute('aria-label', `Slot foto ${i + 1} (${photo ? 'terisi' : 'kosong'})`);
 
       // Slot Badge Number
       const badge = document.createElement('span');
@@ -517,7 +528,7 @@
       if (photo) {
         const img = document.createElement('img');
         img.src = photo;
-        img.alt = `Foto Slot ${i + 1}`;
+        img.alt = `Foto slot ${i + 1}`;
         slotEl.appendChild(img);
 
         // Hover / Focus Action buttons (Ulangi & Hapus)
@@ -533,7 +544,7 @@
           state.activeSlotIndex = i;
           renderSlotsGrid();
           updateShutterHint();
-          showToast(`Target kamera diset ke Slot ${i + 1}`);
+          showToast(`Kamera diarahkan ke slot ${i + 1}`);
         };
 
         const btnDelete = document.createElement('button');
@@ -547,7 +558,7 @@
           renderSlotsGrid();
           updateShutterHint();
           updateStripPreview();
-          showToast(`Foto di Slot ${i + 1} dihapus`);
+          showToast(`Foto di slot ${i + 1} dihapus`);
         };
 
         actionsDiv.appendChild(btnRetake);
@@ -556,7 +567,7 @@
       } else {
         const p = document.createElement('span');
         p.className = 'slot-placeholder-text';
-        p.textContent = `+ Slot ${i + 1}`;
+        p.textContent = `+ Foto ${i + 1}`;
         slotEl.appendChild(p);
       }
 
@@ -614,12 +625,12 @@
   async function downloadFinalStrip() {
     const filledCount = state.slots.filter(Boolean).length;
     if (filledCount === 0) {
-      showToast('Belum ada foto yang diambil untuk strip.');
+      showToast('Belum ada foto di strip ini.');
       return;
     }
 
     try {
-      showToast('Menyiapkan gambar resolusi tinggi...');
+      showToast('Menyiapkan file resolusi tinggi...');
       const canvas = await stripRenderer.render({
         photos: state.slots,
         frameCount: state.stripFormat,
@@ -638,7 +649,7 @@
       link.click();
       document.body.removeChild(link);
 
-      showToast('Strip foto berhasil diunduh!');
+      showToast('Strip foto diunduh.');
     } catch (e) {
       showToast('Gagal mengunduh strip foto: ' + e.message);
     }
@@ -683,7 +694,7 @@
         state.slots[state.activeSlotIndex] = item.dataUrl;
         renderSlotsGrid();
         updateStripPreview();
-        showToast(`Foto dipasang ke Slot ${state.activeSlotIndex + 1}`);
+        showToast(`Foto dipasang ke slot ${state.activeSlotIndex + 1}`);
       };
 
       card.appendChild(img);
@@ -715,10 +726,10 @@
       const url = `${window.location.origin}${window.location.pathname}#session=${state.pairingCode}`;
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(url)
-          .then(() => showToast('Tautan pairing disalin!'))
+          .then(() => showToast('Tautan disalin.'))
           .catch(() => showToast('Tautan: ' + url));
       } else {
-        showToast('Tautan pairing: ' + url);
+        showToast('Tautan: ' + url);
       }
     }
   };
@@ -755,7 +766,7 @@
     // Timer Selector
     DOM.timerSelect?.addEventListener('change', (e) => {
       state.timerSeconds = parseInt(e.target.value, 10) || 0;
-      showToast(`Timer diset ke ${state.timerSeconds} detik`);
+      showToast(`Timer ${state.timerSeconds} detik`);
     });
 
     // Grid Toggle
@@ -785,6 +796,7 @@
         chip.classList.add('active');
         chip.setAttribute('aria-checked', 'true');
         state.currentTheme = chip.getAttribute('data-theme');
+        applyThemeConstraints();
         updateStripPreview();
       });
     });
@@ -804,7 +816,7 @@
       DOM.soundIconOn.style.display = state.soundEnabled ? 'block' : 'none';
       DOM.soundIconOff.style.display = state.soundEnabled ? 'none' : 'block';
       DOM.soundLabelText.textContent = state.soundEnabled ? 'Suara' : 'Bisu';
-      showToast(state.soundEnabled ? 'Suara diaktifkan' : 'Suara dimatikan');
+      showToast(state.soundEnabled ? 'Suara aktif' : 'Suara mati');
     });
 
     // Pairing Modal
@@ -816,7 +828,7 @@
     DOM.btnCopyPairingLink?.addEventListener('click', () => RemoteCameraPairing.copyLink());
     DOM.btnRefreshPairingCode?.addEventListener('click', () => {
       RemoteCameraPairing.generateCode();
-      showToast('Kode sesi baru diperbarui');
+      showToast('Kode sesi diperbarui.');
     });
 
     // Keyboard Shortcuts (Space for shutter if camera active, Escape for modal)
@@ -836,12 +848,15 @@
 
   // Initial App Mount
   function init() {
-    // Render initial Mascot Jep in welcome slot & speech widget
+    // Mascot greets from the viewfinder; the live companion strip below the
+    // controls only shows up once the camera is running.
     JepMascot.updateMascotEl(DOM.welcomeJepSlot, 'idle');
-    JepMascot.updateMascotEl(DOM.mascotReactiveWidget, 'idle');
 
     // Build initial slot grid for 4-photo default
     renderSlotsGrid();
+
+    // Lock the strip size that the selected frame supports
+    applyThemeConstraints();
 
     // Initial strip render
     updateStripPreview();
